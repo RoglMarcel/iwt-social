@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>IWT Social Queue</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control strip, the stock count, then a 7-day x 3-slot posting plan, then work lists.
+   Single committed dark look: the Insider Whale Terminal Instagram palette. */
+:root {
+  color-scheme: dark;
+  --canvas: #0B1011;
+  --surface: #111A19;
+  --surface-2: #14231F;
+  --line: #253C34;
+  --text: #F7FBF8;
+  --muted: #A0B4AE;
+  --mint: #23F2AF;
+  --mint-soft: #6DFFD1;
+  --on-mint: #051A12;
+  --warn: #F2C14E;
+  --bad: #FF7A70;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas); color: var(--text); font-family: var(--font);
+  font-size: 15px; line-height: 1.45;
+}
+.wrap {
+  max-width: 1040px; margin: 0 auto; padding-block: 20px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 28px;
+}
+h1, h2 { margin: 0; text-wrap: balance; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+button {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+  background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+}
+button:hover:not(:disabled) { border-color: var(--mint); color: var(--mint-soft); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--mint); border-color: var(--mint); color: var(--on-mint); }
+button.primary:hover:not(:disabled) { background: var(--mint-soft); border-color: var(--mint-soft); color: var(--on-mint); }
+button.danger { border-color: var(--bad); color: var(--bad); }
+button.icon { padding: 6px 9px; font-family: var(--mono); }
+a { color: var(--mint-soft); }
+
+/* Header */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; justify-content: space-between; }
+.brand { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mark { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.28em; color: var(--muted); }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); display: block; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; color: var(--muted);
+}
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill.ok { color: var(--text); } .pill.ok::before { background: var(--mint); }
+.pill.off::before { background: var(--warn); }
+.pill.err { color: var(--bad); border-color: var(--bad); } .pill.err::before { background: var(--bad); }
+
+.notice {
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); background: var(--surface);
+  padding: 12px 14px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 10px 16px;
+  align-items: center; justify-content: space-between;
+}
+.notice.bad { border-left-color: var(--bad); }
+.notice p { margin: 0; min-width: 0; flex: 1 1 260px; }
+
+/* Stock */
+.stock { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.stock > div { padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stock > div + div { border-left: 1px solid var(--line); }
+.stock .label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.stock .num { font-size: 44px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stock .num small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.stock .sub { font-size: 13px; color: var(--muted); }
+.stock .sub b { color: var(--text); font-weight: 600; }
+.stock .low .num { color: var(--warn); }
+.stock .out .num { color: var(--bad); }
+
+/* Plan */
+.sec { display: flex; flex-direction: column; gap: 12px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.sec-head span { font-size: 13px; color: var(--muted); }
+.plan { display: grid; grid-template-columns: 92px repeat(3, minmax(0, 1fr)); gap: 6px; }
+.plan .day { font-size: 13px; color: var(--muted); align-self: center; font-variant-numeric: tabular-nums; }
+.plan .day b { display: block; color: var(--text); font-weight: 600; }
+.plan .colhead { font-family: var(--mono); font-size: 12px; color: var(--muted); padding: 0 10px 2px; }
+.cell {
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; min-height: 54px;
+  display: flex; flex-direction: column; gap: 2px; background: var(--surface);
+}
+.cell .state { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.cell .what { font-size: 13px; overflow-wrap: anywhere; }
+.cell.planned { background: var(--surface-2); } .cell.planned .state { color: var(--mint); }
+.cell.posted .state { color: var(--mint-soft); } .cell.posted .what { color: var(--muted); }
+.cell.empty { background: transparent; border-style: dashed; } .cell.empty .state { color: var(--warn); }
+.cell.missed { background: transparent; } .cell.missed .what { color: var(--muted); }
+.cell.failed { border-color: var(--bad); } .cell.failed .state { color: var(--bad); }
+.cell.publishing .state { color: var(--warn); }
+
+/* Lists */
+.list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 12px 14px; }
+.row + .row { border-top: 1px solid var(--line); }
+.row .main { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.row .title { font-weight: 600; overflow-wrap: anywhere; }
+.row .meta { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.row .meta.err { color: var(--bad); }
+.row .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kind {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  border-radius: 4px; padding: 2px 7px; margin-right: 8px; vertical-align: 1px;
+}
+.kind.reel { background: var(--mint); color: var(--on-mint); }
+.kind.carousel { border: 1px solid var(--mint); color: var(--mint); }
+.when { font-family: var(--mono); font-size: 12px; color: var(--mint-soft); }
+.blank { padding: 16px 14px; color: var(--muted); font-size: 14px; }
+.foot { font-size: 12px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
+
+/* Sign-in */
+.login { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 24px; max-width: 440px; display: flex; flex-direction: column; gap: 14px; }
+.login p { margin: 0; color: var(--muted); }
+.login label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.login form { display: flex; flex-direction: column; gap: 8px; }
+.login input {
+  font: inherit; color: var(--text); background: var(--canvas); border: 1px solid var(--line);
+  border-radius: 6px; padding: 10px 12px; width: 100%;
+}
+.login input:focus-visible { outline: 2px solid var(--mint); outline-offset: 1px; }
+.login button { padding: 10px 12px; font-size: 14px; }
+.login .msg { color: var(--text); min-height: 1.45em; }
+.login .msg.bad { color: var(--bad); }
+.media a { margin-right: 6px; }
+.app { display: flex; flex-direction: column; gap: 28px; }
+
+@media (max-width: 640px) {
+  .stock { grid-template-columns: 1fr; }
+  .stock > div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .stock .num { font-size: 36px; }
+  .plan { grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .cell { padding: 6px 7px; }
+  .cell .what { font-size: 12px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  button, .cell { transition: border-color 0.12s, color 0.12s, background 0.12s; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark"><span class="dots"><i></i><i></i><i></i></span>INSIDER WHALE TERMINAL</div>
+      <h1>Social queue</h1>
+    </div>
+    <div class="controls">
+      <span class="pill" id="ig-pill">Instagram: checking</span>
+      <button id="btn-pause" disabled>Pause posting</button>
+      <button id="btn-refresh" disabled>Refresh</button>
+      <button id="btn-signout" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <div id="notices"></div>
+
+  <section class="login" id="login" hidden>
+    <p>Sign in with the email that is allowed to manage this queue. You get a link by mail; open it on this device.</p>
+    <form id="login-form">
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="email" required placeholder="you@example.com">
+      <button class="primary" id="login-send" type="submit">Email me a sign-in link</button>
+    </form>
+    <div class="msg" id="login-msg" role="status"></div>
+  </section>
+
+  <div class="app" id="app" hidden>
+
+  <section class="stock" aria-label="Stock">
+    <div id="st-reel"><span class="label">Reels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
+    <div id="st-carousel"><span class="label">Carousels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
+    <div id="st-runway"><span class="label">Runway</span><span class="num">–</span><span class="sub">Plan: 2 reels and 1 carousel a day</span></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Next 7 days</h2><span id="plan-note"></span></div>
+    <div class="plan" id="plan"></div>
+  </section>
+
+  <section class="sec" id="sec-problems" hidden>
+    <div class="sec-head"><h2>Needs attention</h2><span>Failed posts are never retried automatically</span></div>
+    <div class="list" id="list-problems"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Waiting for your approval</h2><span id="draft-note"></span></div>
+    <div class="list" id="list-drafts"><div class="blank">Loading drafts</div></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Queue</h2><span>Approved posts, in posting order</span></div>
+    <div class="list" id="list-queue"><div class="blank">Loading the queue</div></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Posted</h2><span id="posted-note"></span></div>
+    <div class="list" id="list-posted"><div class="blank">Loading history</div></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+(function () {
+  "use strict";
+  // Both values are public by design: data access is decided in the database, per signed-in user.
+  var SB_URL = "https://hrekooheseafvocxaquy.supabase.co";
+  var SB_KEY = "sb_publishable_0irDxEwBNClNY3RjehMxQQ_wAFN0r-b";
+  var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1 };
+
+  var mcp = null, snap = null, busy = false, confirming = null, timer = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function h(tag, props, kids) {
+    var el = document.createElement(tag);
+    if (props) Object.keys(props).forEach(function (k) {
+      if (k === "class") el.className = props[k];
+      else if (k === "on") Object.keys(props.on).forEach(function (ev) { el.addEventListener(ev, props.on[ev]); });
+      else if (props[k] !== null && props[k] !== undefined && props[k] !== false) el.setAttribute(k, props[k] === true ? "" : props[k]);
+    });
+    (kids || []).forEach(function (c) {
+      if (c === null || c === undefined || c === false) return;
+      el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return el;
+  }
+  function fill(el, kids) { el.replaceChildren.apply(el, kids); }
+
+  // ---- Supabase (signed-in user) -------------------------------------------
+  function rpc(name, args) {
+    return mcp.rpc(name, args || {}).then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+  function run(action, id) { return rpc("iwt_act", id ? { p_action: action, p_id: id } : { p_action: action }); }
+  function readSnapshot() { return rpc("iwt_snapshot"); }
+
+  function explain(e) {
+    var code = String((e && e.code) || "");
+    if (code === "42501") {
+      return { text: "You are signed in, but this email is not on the allow-list for the queue. Sign out and use the allowed address.", action: { label: "Sign out", fn: signOut } };
+    }
+    if (code === "PGRST301" || code === "401" || /JWT/i.test(String(e && e.message))) {
+      return { text: "Your sign-in has expired. Sign in again.", action: { label: "Sign in", fn: signOut } };
+    }
+    if (code === "P0001") return { text: cleanMessage(e.message), action: null };
+    return { text: "Could not reach the queue. Check your connection. Nothing was changed.", action: { label: "Try again", fn: load } };
+  }
+  function cleanMessage(m) {
+    var s = String(m || "Supabase refused that change.");
+    var hit = s.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (hit) { try { s = JSON.parse('"' + hit[1] + '"'); } catch (_) { s = hit[1]; } }
+    s = s.replace(/^ERROR:\s*/i, "").replace(/^P0001:\s*/i, "").split("\n")[0];
+    return s.length > 220 ? s.slice(0, 220) + "…" : s;
+  }
+  function notice(info, bad) {
+    var kids = [h("p", null, [info.text])];
+    if (info.action) kids.push(h("button", { on: { click: info.action.fn } }, [info.action.label]));
+    fill($("notices"), [h("div", { class: "notice" + (bad ? " bad" : ""), role: "status" }, kids)]);
+  }
+  function clearNotice() { fill($("notices"), []); }
+
+  // ---- Dates in the posting timezone --------------------------------------
+  function mins(hm) { return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5)); }
+  function addDays(iso, n) {
+    var d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  function dayLabel(iso, offset) {
+    var d = new Date(iso + "T00:00:00Z");
+    var wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
+    var mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+    return { head: offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : wd, sub: d.getUTCDate() + " " + mo, wd: wd };
+  }
+  function stamp(ts, tz) {
+    try {
+      return new Date(ts).toLocaleString("en-GB", { timeZone: tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch (_) { return String(ts).slice(0, 16).replace("T", " "); }
+  }
+
+  // ---- Posting plan: which approved post lands in which slot --------------
+  function buildPlan(s) {
+    var slots = s.settings.slots, today = s.local.date, nowM = mins(s.local.time), grace = s.settings.grace_minutes;
+    var q = { reel: [], carousel: [] };
+    s.posts.forEach(function (p) { if (p.status === "approved" && !p.publish_now && q[p.kind]) q[p.kind].push(p); });
+    var taken = {};
+    s.posts.concat(s.posted).forEach(function (p) {
+      if (p.slot_date !== null && p.slot_date !== undefined) taken[p.slot_date + "#" + p.slot_index] = p;
+    });
+    var days = [], when = {}, firstEmpty = null;
+    for (var d = 0; d < 60; d++) {
+      var date = addDays(today, d), cells = [];
+      for (var i = 0; i < slots.length; i++) {
+        var slot = slots[i], hit = taken[date + "#" + i], cell;
+        if (hit) {
+          cell = { state: hit.status || "posted", post: hit };
+        } else if (d === 0 && nowM - mins(slot.time) > grace) {
+          cell = { state: "missed", post: null };
+        } else {
+          var next = q[slot.kind] ? q[slot.kind].shift() : null;
+          if (next) {
+            cell = { state: "planned", post: next };
+            when[next.id] = dayLabel(date, d).head + " " + slot.time;
+          } else {
+            cell = { state: "empty", post: null };
+            if (!firstEmpty) firstEmpty = { date: date, offset: d, slot: slot };
+          }
+        }
+        cell.slot = slot;
+        cells.push(cell);
+      }
+      days.push({ date: date, offset: d, cells: cells });
+    }
+    return { days: days, when: when, firstEmpty: firstEmpty };
+  }
+
+  // ---- Rendering ----------------------------------------------------------
+  function perDay(s, kind) { return s.settings.slots.filter(function (x) { return x.kind === kind; }).length; }
+  function count(s, kind, status) {
+    return s.posts.filter(function (p) { return p.kind === kind && p.status === status; }).length;
+  }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+  function stockTile(id, s, kind, labelMany) {
+    var ready = count(s, kind, "approved"), drafts = count(s, kind, "draft"), rate = perDay(s, kind);
+    var days = rate ? Math.floor(ready / rate) : 0;
+    var el = $(id);
+    el.className = ready === 0 ? "out" : days < 3 ? "low" : "";
+    fill(el, [
+      h("span", { class: "label" }, [labelMany + " queued"]),
+      h("span", { class: "num" }, [String(ready), h("small", null, [rate ? plural(days, "day", "days") + " at " + rate + " a day" : "not in the plan"])]),
+      h("span", { class: "sub" }, [h("b", null, [String(drafts)]), " more waiting for approval, ", h("b", null, [String(ready + drafts)]), " in stock"])
+    ]);
+    return days;
+  }
+
+  function render() {
+    var s = snap, set = s.settings, plan = buildPlan(s);
+
+    // Instagram link + controls
+    var pill = $("ig-pill");
+    if (set.ig_username && !set.ig_error) { pill.className = "pill ok"; pill.textContent = "Instagram: @" + set.ig_username; }
+    else if (set.has_token && set.ig_error) { pill.className = "pill err"; pill.textContent = "Instagram: link broken"; }
+    else if (set.has_token) { pill.className = "pill"; pill.textContent = "Instagram: checking token"; }
+    else { pill.className = "pill off"; pill.textContent = "Instagram: not linked yet"; }
+    var pause = $("btn-pause");
+    pause.textContent = set.paused ? "Resume posting" : "Pause posting";
+    pause.className = set.paused ? "primary" : "";
+    pause.disabled = busy; $("btn-refresh").disabled = busy;
+
+    // Stock
+    var dReel = stockTile("st-reel", s, "reel", "Reels");
+    var dCar = stockTile("st-carousel", s, "carousel", "Carousels");
+    var runway = Math.min(dReel, dCar), rw = $("st-runway");
+    rw.className = runway === 0 ? "out" : runway < 3 ? "low" : "";
+    var gap = plan.firstEmpty;
+    fill(rw, [
+      h("span", { class: "label" }, ["Runway"]),
+      h("span", { class: "num" }, [String(runway), h("small", null, [runway === 1 ? "full day" : "full days"])]),
+      h("span", { class: "sub" }, gap
+        ? ["First empty slot: ", h("b", null, [dayLabel(gap.date, gap.offset).head + " " + dayLabel(gap.date, gap.offset).sub + ", " + gap.slot.time]), " (" + gap.slot.kind + ")"]
+        : ["Every slot is filled for the next 60 days"])
+    ]);
+
+    // Plan grid
+    var grid = [h("div", null, [])];
+    set.slots.forEach(function (sl) { grid.push(h("div", { class: "colhead" }, [sl.time + " " + sl.kind])); });
+    plan.days.slice(0, 7).forEach(function (day) {
+      var lab = dayLabel(day.date, day.offset);
+      grid.push(h("div", { class: "day" }, [h("b", null, [lab.head]), lab.sub]));
+      day.cells.forEach(function (c) {
+        var words = { planned: "Planned", posted: "Posted", empty: "Empty", missed: "Missed", failed: "Failed", publishing: "Publishing", approved: "Planned", draft: "Planned" };
+        var what = c.post ? c.post.title : c.state === "empty" ? "No " + c.slot.kind + " in the queue" : "No post went out";
+        grid.push(h("div", { class: "cell " + c.state }, [
+          h("span", { class: "state" }, [words[c.state] || c.state]),
+          h("span", { class: "what" }, [what])
+        ]));
+      });
+    });
+    fill($("plan"), grid);
+    $("plan-note").textContent = set.paused ? "Posting is paused. Slots pass without posting." : "Times in " + set.timezone;
+
+    // Lists
+    var drafts = s.posts.filter(function (p) { return p.status === "draft"; });
+    var queue = s.posts.filter(function (p) { return p.status === "approved"; });
+    var problems = s.posts.filter(function (p) { return p.status === "failed" || p.status === "publishing"; });
+
+    $("draft-note").textContent = drafts.length ? "Nothing here is posted until you approve it" : "";
+    fill($("list-drafts"), drafts.length ? drafts.map(function (p) {
+      return row(p, [mediaLinks(p), p.caption ? p.caption : "No caption yet"], [btn("Approve", "primary", function () { act("approve", p.id); })]);
+    }) : [h("div", { class: "blank" }, ["No drafts. When Claude adds a reel or carousel, it shows up here for your approval."])]);
+
+    fill($("list-queue"), queue.length ? queue.map(function (p) {
+      var same = queue.filter(function (x) { return x.kind === p.kind; });
+      var idx = same.indexOf(p), actions;
+      if (confirming === p.id) {
+        actions = [
+          h("span", { class: "meta" }, ["Publish to Instagram right now?"]),
+          btn("Yes, publish", "danger", function () { confirming = null; act("post_now", p.id); }),
+          btn("Cancel", "", function () { confirming = null; render(); })
+        ];
+      } else {
+        actions = [
+          btn("↑", "icon", function () { act("up", p.id); }, idx === 0, "Move earlier"),
+          btn("↓", "icon", function () { act("down", p.id); }, idx === same.length - 1, "Move later"),
+          btn("Post now", "", function () { confirming = p.id; render(); }, !set.has_token),
+          btn("Back to drafts", "", function () { act("unapprove", p.id); })
+        ];
+      }
+      var slotText = p.publish_now ? "Posting within 5 minutes" : (plan.when[p.id] || "Beyond 60 days");
+      return row(p, [h("span", { class: "when" }, [slotText]), mediaLine(p)], actions);
+    }) : [h("div", { class: "blank" }, ["The queue is empty. Approve a draft to schedule it into the next free slot."])]);
+
+    $("sec-problems").hidden = problems.length === 0;
+    fill($("list-problems"), problems.map(function (p) {
+      if (p.status === "publishing") return row(p, ["Uploading to Instagram. This can take a few minutes for reels."], []);
+      return row(p, [h("span", { class: "meta err" }, [p.error || "Publishing failed"])], [btn("Put back in queue", "", function () { act("retry", p.id); })]);
+    }));
+
+    var p7 = s.posted_7d || { reel: 0, carousel: 0 };
+    $("posted-note").textContent = "Last 7 days: " + plural(p7.reel, "reel", "reels") + ", " + plural(p7.carousel, "carousel", "carousels");
+    fill($("list-posted"), s.posted.length ? s.posted.map(function (p) {
+      var link = typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0
+        ? h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, ["Open on Instagram"]) : null;
+      return row(p, [stamp(p.posted_at, set.timezone)], link ? [link] : []);
+    }) : [h("div", { class: "blank" }, ["Nothing posted yet."])]);
+
+    var tick = set.last_tick_at ? "Last timer run " + stamp(set.last_tick_at, set.timezone) + (set.last_tick_note ? " · " + set.last_tick_note : "") : "The timer has not run yet";
+    $("foot").textContent = tick + " · Checked " + stamp(s.now, set.timezone) + " " + set.timezone;
+
+    if (!set.has_token) {
+      notice({ text: "Instagram is not linked yet. Posts stay in the queue and nothing is published until the access token is added in Supabase.", action: null });
+    } else if (set.ig_error) {
+      notice({ text: "Instagram refused the token: " + cleanMessage(set.ig_error), action: null }, true);
+    }
+  }
+
+  function mediaLine(p) {
+    return p.kind === "reel" ? (p.media_count === 1 ? "1 video" : p.media_count + " videos") : plural(p.media_count, "slide", "slides");
+  }
+  function mediaLinks(p) {
+    var urls = (Array.isArray(p.media) ? p.media : []).filter(function (u) { return typeof u === "string" && u.indexOf("https://") === 0; });
+    if (!urls.length) return h("span", null, ["No media attached"]);
+    var kids = [(p.kind === "reel" ? "Video: " : plural(urls.length, "slide", "slides") + ": ")];
+    urls.forEach(function (u, i) { kids.push(h("a", { href: u, target: "_blank", rel: "noopener" }, [p.kind === "reel" ? "open" : String(i + 1)])); });
+    return h("span", { class: "media" }, kids);
+  }
+  function btn(label, cls, fn, disabled, aria) {
+    return h("button", { class: cls, disabled: disabled || busy, "aria-label": aria || null, on: { click: fn } }, [label]);
+  }
+  function row(p, metas, actions) {
+    var meta = [];
+    metas.forEach(function (m, i) { if (i) meta.push(" · "); meta.push(m); });
+    return h("div", { class: "row" }, [
+      h("div", { class: "main" }, [
+        h("div", { class: "title" }, [h("span", { class: "kind " + p.kind }, [p.kind]), p.title]),
+        h("div", { class: "meta" }, meta)
+      ]),
+      actions.length ? h("div", { class: "actions" }, actions) : null
+    ]);
+  }
+
+  // ---- Load and act -------------------------------------------------------
+  function setBusy(b) { busy = b; if (snap) render(); else { $("btn-refresh").disabled = b; } }
+
+  function load() {
+    if (!mcp || busy) return;
+    setBusy(true);
+    readSnapshot().then(function (s) { snap = s; clearNotice(); busy = false; render(); })
+      .catch(function (e) { busy = false; if (snap) render(); notice(explain(e), true); $("btn-refresh").disabled = false; });
+  }
+
+  function act(action, id) {
+    if (!mcp || busy || !ACTIONS[action]) return;
+    if (id !== undefined && !UUID.test(id)) return;
+    setBusy(true);
+    run(action, id).then(function (s) { snap = s; clearNotice(); busy = false; render(); })
+      .catch(function (e) {
+        busy = false;
+        // A write that got no clear answer may still have run: show what is true now.
+        readSnapshot().then(function (s) { snap = s; render(); notice(explain(e), true); })
+          .catch(function () { if (snap) render(); notice(explain(e), true); });
+      });
+  }
+
+  $("btn-refresh").addEventListener("click", load);
+  $("btn-pause").addEventListener("click", function () { if (snap) act(snap.settings.paused ? "resume" : "pause"); });
+
+  // ---- Sign-in ------------------------------------------------------------
+  var sb = window.supabase.createClient(SB_URL, SB_KEY);
+  function show(signedIn) {
+    $("login").hidden = signedIn; $("app").hidden = !signedIn; $("btn-signout").hidden = !signedIn;
+    $("btn-pause").hidden = !signedIn; $("btn-refresh").hidden = !signedIn; $("ig-pill").hidden = !signedIn;
+  }
+  function signOut() {
+    clearInterval(timer); timer = null; mcp = null; snap = null; clearNotice();
+    sb.auth.signOut().then(function () { show(false); });
+  }
+  function start(session) {
+    if (!session) { mcp = null; show(false); return; }
+    if (mcp) return;
+    mcp = sb; show(true);
+    $("btn-refresh").disabled = false;
+    load();
+    timer = setInterval(function () { if (!document.hidden && !busy && confirming === null) load(); }, 60000);
+  }
+  $("btn-signout").addEventListener("click", signOut);
+  $("login-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var msg = $("login-msg"), send = $("login-send"), email = $("login-email").value.trim();
+    if (!email) return;
+    send.disabled = true; msg.className = "msg"; msg.textContent = "Sending the link";
+    sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname } })
+      .then(function (r) {
+        send.disabled = false;
+        if (r.error) { msg.className = "msg bad"; msg.textContent = /rate|seconds/i.test(r.error.message) ? "Too many links requested. Wait a minute and try again." : "The link could not be sent: " + r.error.message; }
+        else { msg.textContent = "Link sent. Open the mail on this device and click it."; }
+      });
+  });
+  show(false);
+  sb.auth.onAuthStateChange(function (_event, session) { setTimeout(function () { start(session); }, 0); });
+  sb.auth.getSession().then(function (r) { start(r.data ? r.data.session : null); });
+})();
+</script>
+</html>
