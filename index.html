@@ -133,6 +133,7 @@ a { color: var(--mint-soft); }
 /* Sign-in */
 .login { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 24px; max-width: 440px; display: flex; flex-direction: column; gap: 14px; }
 .login p { margin: 0; color: var(--muted); }
+.link { max-width: 560px; }
 .login label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .login form { display: flex; flex-direction: column; gap: 8px; }
 .login input {
@@ -167,6 +168,7 @@ a { color: var(--mint-soft); }
     </div>
     <div class="controls">
       <span class="pill" id="ig-pill">Instagram: checking</span>
+      <button id="btn-link" hidden>Link Instagram</button>
       <button id="btn-pause" disabled>Pause posting</button>
       <button id="btn-refresh" disabled>Refresh</button>
       <button id="btn-signout" hidden>Sign out</button>
@@ -183,6 +185,17 @@ a { color: var(--mint-soft); }
       <button class="primary" id="login-send" type="submit">Email me a sign-in link</button>
     </form>
     <div class="msg" id="login-msg" role="status"></div>
+  </section>
+
+  <section class="login link" id="link" hidden>
+    <p>Paste the long-lived access token of the Instagram account that should post. It is stored in the database and never shown again.</p>
+    <form id="link-form">
+      <label for="link-token">Instagram access token</label>
+      <input id="link-token" type="password" autocomplete="off" spellcheck="false" required>
+      <button class="primary" id="link-save" type="submit">Link Instagram</button>
+      <button id="link-cancel" type="button">Cancel</button>
+    </form>
+    <div class="msg" id="link-msg" role="status"></div>
   </section>
 
   <div class="app" id="app" hidden>
@@ -368,6 +381,9 @@ a { color: var(--mint-soft); }
     else if (set.has_token && set.ig_error) { pill.className = "pill err"; pill.textContent = "Instagram: link broken"; }
     else if (set.has_token) { pill.className = "pill"; pill.textContent = "Instagram: checking token"; }
     else { pill.className = "pill off"; pill.textContent = "Instagram: not linked yet"; }
+    var link = $("btn-link");
+    link.textContent = set.has_token ? "Change Instagram token" : "Link Instagram";
+    link.disabled = busy;
     var pause = $("btn-pause");
     pause.textContent = set.paused ? "Resume posting" : "Pause posting";
     pause.className = set.paused ? "primary" : "";
@@ -454,7 +470,7 @@ a { color: var(--mint-soft); }
     $("foot").textContent = tick + " · Checked " + stamp(s.now, set.timezone) + " " + set.timezone;
 
     if (!set.has_token) {
-      notice({ text: "Instagram is not linked yet. Posts stay in the queue and nothing is published until the access token is added in Supabase.", action: null });
+      notice({ text: "Instagram is not linked yet. Posts stay in the queue and nothing is published until you link it.", action: { label: "Link Instagram", fn: openLink } });
     } else if (set.ig_error) {
       notice({ text: "Instagram refused the token: " + cleanMessage(set.ig_error), action: null }, true);
     }
@@ -508,6 +524,32 @@ a { color: var(--mint-soft); }
       });
   }
 
+  // ---- Link Instagram ------------------------------------------------------
+  function openLink() { $("link-msg").textContent = ""; $("link").hidden = false; $("link-token").focus(); }
+  function closeLink() { $("link-form").reset(); $("link").hidden = true; }
+  // The worker checks the token in the background; reload until its answer is in.
+  function awaitCheck(tries) {
+    var set = snap && snap.settings;
+    if (!set || !set.has_token || set.ig_username || set.ig_error || tries === 0) return;
+    setTimeout(function () {
+      if (!mcp) return;
+      readSnapshot().then(function (s) { snap = s; clearNotice(); render(); awaitCheck(tries - 1); })
+        .catch(function (e) { notice(explain(e), true); });
+    }, 4000);
+  }
+  $("btn-link").addEventListener("click", openLink);
+  $("link-cancel").addEventListener("click", closeLink);
+  $("link-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!mcp || busy) return;
+    var msg = $("link-msg"), token = $("link-token").value.trim();
+    msg.className = "msg"; msg.textContent = "Saving the token";
+    setBusy(true);
+    rpc("iwt_link_instagram", { p_token: token })
+      .then(function (s) { snap = s; busy = false; closeLink(); clearNotice(); render(); awaitCheck(10); })
+      .catch(function (e) { busy = false; render(); msg.className = "msg bad"; msg.textContent = explain(e).text; });
+  });
+
   $("btn-refresh").addEventListener("click", load);
   $("btn-pause").addEventListener("click", function () { if (snap) act(snap.settings.paused ? "resume" : "pause"); });
 
@@ -516,6 +558,7 @@ a { color: var(--mint-soft); }
   function show(signedIn) {
     $("login").hidden = signedIn; $("app").hidden = !signedIn; $("btn-signout").hidden = !signedIn;
     $("btn-pause").hidden = !signedIn; $("btn-refresh").hidden = !signedIn; $("ig-pill").hidden = !signedIn;
+    $("btn-link").hidden = !signedIn; if (!signedIn) closeLink();
   }
   function signOut() {
     clearInterval(timer); timer = null; mcp = null; snap = null; clearNotice();
