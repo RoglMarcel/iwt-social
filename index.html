@@ -491,6 +491,8 @@ a { color: var(--mint-soft); }
       if (p.tt_status === "failed") acts.push(btn("Retry TikTok", "", function () { act("tiktok_retry", p.id); }));
       var ttWords = { queued: "TikTok: waiting", publishing: "TikTok: uploading", posted: "TikTok: posted", failed: "TikTok: failed", skipped: "TikTok: not sent" };
       var metas = [stamp(p.posted_at, set.timezone)];
+      var stWords = { queued: "Story: waiting", publishing: "Story: posting", posted: "Story: posted", failed: "Story: failed" };
+      if (p.st_status && stWords[p.st_status]) metas.push(h("span", { class: p.st_status === "failed" ? "err" : "" }, [stWords[p.st_status] + (p.st_status === "failed" && p.st_error ? " (" + cleanMessage(p.st_error) + ")" : "")]));
       if (p.tt_status) metas.push(h("span", { class: p.tt_status === "failed" ? "err" : "" }, [ttWords[p.tt_status] + (p.tt_status === "failed" && p.tt_error ? " (" + cleanMessage(p.tt_error) + ")" : "")]));
       return row(p, metas, acts);
     }) : [h("div", { class: "blank" }, ["Nothing posted yet."])]);
