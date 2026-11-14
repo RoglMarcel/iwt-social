@@ -144,6 +144,12 @@ a { color: var(--mint-soft); }
 .login .msg { color: var(--text); min-height: 1.45em; }
 .login .msg.bad { color: var(--bad); }
 .media a { margin-right: 6px; }
+.link { max-width: 560px; }
+.link h2 { color: var(--text); }
+.link .steps { display: flex; flex-direction: column; gap: 14px; }
+.link .row2 { display: flex; flex-wrap: wrap; gap: 8px; }
+.link .row2 button { flex: 0 0 auto; }
+.link .small { font-size: 13px; }
 .app { display: flex; flex-direction: column; gap: 28px; }
 
 @media (max-width: 640px) {
@@ -186,6 +192,25 @@ a { color: var(--mint-soft); }
   </section>
 
   <div class="app" id="app" hidden>
+
+  <section class="login link" id="link" hidden>
+    <h2>Connect Instagram</h2>
+    <p id="link-text"></p>
+    <div class="steps">
+      <form id="key-form" hidden>
+        <label for="zernio-key">Zernio API key</label>
+        <input id="zernio-key" type="password" autocomplete="off" spellcheck="false" required placeholder="sk_…">
+        <button class="primary" id="key-save" type="submit">Save key</button>
+        <p class="small">Get it once: sign up free at <a href="https://zernio.com" target="_blank" rel="noopener">zernio.com</a>, open API keys, create a key and paste it here. It is stored in your Supabase database, not in this page.</p>
+      </form>
+      <div class="row2">
+        <button class="primary" id="btn-connect" hidden>Connect Instagram</button>
+        <button id="btn-recheck" hidden>Check connection</button>
+        <button id="btn-rekey" hidden>Use a different key</button>
+      </div>
+    </div>
+    <div class="msg" id="link-msg" role="status"></div>
+  </section>
 
   <section class="stock" aria-label="Stock">
     <div id="st-reel"><span class="label">Reels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
@@ -366,8 +391,8 @@ a { color: var(--mint-soft); }
     var pill = $("ig-pill");
     if (set.ig_username && !set.ig_error) { pill.className = "pill ok"; pill.textContent = "Instagram: @" + set.ig_username; }
     else if (set.has_token && set.ig_error) { pill.className = "pill err"; pill.textContent = "Instagram: link broken"; }
-    else if (set.has_token) { pill.className = "pill"; pill.textContent = "Instagram: checking token"; }
-    else { pill.className = "pill off"; pill.textContent = "Instagram: not linked yet"; }
+    else if (set.has_token) { pill.className = "pill ok"; pill.textContent = "Instagram: connected"; }
+    else { pill.className = "pill off"; pill.textContent = "Instagram: not connected"; }
     var pause = $("btn-pause");
     pause.textContent = set.paused ? "Resume posting" : "Pause posting";
     pause.className = set.paused ? "primary" : "";
@@ -453,12 +478,72 @@ a { color: var(--mint-soft); }
     var tick = set.last_tick_at ? "Last timer run " + stamp(set.last_tick_at, set.timezone) + (set.last_tick_note ? " · " + set.last_tick_note : "") : "The timer has not run yet";
     $("foot").textContent = tick + " · Checked " + stamp(s.now, set.timezone) + " " + set.timezone;
 
-    if (!set.has_token) {
-      notice({ text: "Instagram is not linked yet. Posts stay in the queue and nothing is published until the access token is added in Supabase.", action: null });
-    } else if (set.ig_error) {
-      notice({ text: "Instagram refused the token: " + cleanMessage(set.ig_error), action: null }, true);
-    }
+    renderLink(set);
   }
+
+  // ---- Instagram connection (through Zernio) ------------------------------
+  var rekey = false, linkBusy = false;
+  function renderLink(set) {
+    var needKey = !set.has_key || rekey;
+    $("link").hidden = !!set.has_token && !set.ig_error && !rekey;
+    $("key-form").hidden = !needKey;
+    $("btn-connect").hidden = needKey;
+    $("btn-recheck").hidden = needKey;
+    $("btn-rekey").hidden = needKey;
+    $("btn-connect").textContent = set.has_token ? "Reconnect Instagram" : "Connect Instagram";
+    $("btn-connect").disabled = linkBusy; $("btn-recheck").disabled = linkBusy; $("key-save").disabled = linkBusy;
+    $("link-text").textContent = needKey
+      ? "Step 1 of 2. Posts go to Instagram through Zernio, a posting service. Paste your Zernio API key once."
+      : set.has_token
+        ? "There is a problem with the connection: " + cleanMessage(set.ig_error)
+        : "Step 2 of 2. Log in to Instagram and allow posting. Your account must be a Business or Creator account. You come back here afterwards.";
+  }
+  function linkMsg(text, bad) { var m = $("link-msg"); m.className = "msg" + (bad ? " bad" : ""); m.textContent = text || ""; }
+  function fn(body) {
+    return sb.auth.getSession().then(function (r) {
+      var t = r.data && r.data.session ? r.data.session.access_token : "";
+      return fetch(SB_URL + "/functions/v1/iwt-social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SB_KEY, Authorization: "Bearer " + t },
+        body: JSON.stringify(body)
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (j) {
+        if (res.status === 401) throw new Error("Your sign-in has expired or this email is not allowed. Sign out and sign in again.");
+        if (!res.ok || j.error) throw new Error(j.error || "The server did not answer (HTTP " + res.status + ").");
+        return j;
+      });
+    }, function () { throw new Error("Could not reach the server. Check your connection."); });
+  }
+  function linkRun(body, working, done) {
+    if (linkBusy) return;
+    linkBusy = true; linkMsg(working); if (snap) renderLink(snap.settings);
+    fn(body).then(function (j) { linkBusy = false; done(j); })
+      .catch(function (e) { linkBusy = false; linkMsg(e.message, true); if (snap) renderLink(snap.settings); else load(); });
+  }
+  function recheck(first) {
+    linkRun({ action: "refresh_link" }, "Checking the Instagram connection", function (j) {
+      linkMsg(j.connected ? "" : (j.note || (first ? "Instagram did not finish connecting. Try Connect Instagram again." : "No Instagram account is connected yet.")), !j.connected);
+      load();
+    });
+  }
+  $("key-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var key = $("zernio-key").value.trim();
+    if (!key) return;
+    linkRun({ action: "set_key", key: key }, "Checking the key with Zernio", function (j) {
+      $("zernio-key").value = ""; rekey = false;
+      linkMsg(j.connected ? "" : "Key saved. Now connect Instagram.");
+      load();
+    });
+  });
+  $("btn-connect").addEventListener("click", function () {
+    linkRun({ action: "connect_url", redirect_url: location.origin + location.pathname }, "Opening the Instagram login", function (j) {
+      location.href = j.authUrl;
+    });
+  });
+  $("btn-recheck").addEventListener("click", function () { recheck(false); });
+  $("btn-rekey").addEventListener("click", function () { rekey = true; linkMsg(""); if (snap) renderLink(snap.settings); });
 
   function mediaLine(p) {
     return p.kind === "reel" ? (p.media_count === 1 ? "1 video" : p.media_count + " videos") : plural(p.media_count, "slide", "slides");
@@ -526,7 +611,20 @@ a { color: var(--mint-soft); }
     if (mcp) return;
     mcp = sb; show(true);
     $("btn-refresh").disabled = false;
+    // Back from the Instagram login: confirm the connection, then tidy the address.
+    var q = new URLSearchParams(location.search);
+    if (q.has("connected") || q.has("error")) {
+      var failed = q.get("error_message") || q.get("error");
+      history.replaceState(null, "", location.pathname);
+      if (failed && !q.has("connected")) { load(); linkMsg("Instagram was not connected: " + String(failed).slice(0, 200), true); }
+      else recheck(true);
+      return startTimer();
+    }
     load();
+    startTimer();
+  }
+  function startTimer() {
+    if (timer) return;
     timer = setInterval(function () { if (!document.hidden && !busy && confirming === null) load(); }, 60000);
   }
   $("btn-signout").addEventListener("click", signOut);
