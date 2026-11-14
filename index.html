@@ -173,6 +173,7 @@ a { color: var(--mint-soft); }
     </div>
     <div class="controls">
       <span class="pill" id="ig-pill">Instagram: checking</span>
+      <span class="pill" id="tt-pill" hidden>TikTok: checking</span>
       <button id="btn-pause" disabled>Pause posting</button>
       <button id="btn-refresh" disabled>Refresh</button>
       <button id="btn-signout" hidden>Sign out</button>
@@ -243,6 +244,18 @@ a { color: var(--mint-soft); }
     <div class="list" id="list-posted"><div class="blank">Loading history</div></div>
   </section>
 
+  <section class="sec" id="sec-tiktok" hidden>
+    <div class="sec-head"><h2>TikTok</h2><span id="tt-note"></span></div>
+    <div class="list"><div class="row">
+      <div class="main"><div class="title" id="tt-title">TikTok</div><div class="meta" id="tt-text"></div></div>
+      <div class="actions">
+        <button class="primary" id="btn-tt-connect">Connect TikTok</button>
+        <button id="btn-tt-toggle" hidden>Pause TikTok</button>
+      </div>
+    </div></div>
+    <div class="msg" id="tt-msg" role="status"></div>
+  </section>
+
   <div class="foot" id="foot"></div>
   </div>
 </div>
@@ -255,7 +268,7 @@ a { color: var(--mint-soft); }
   var SB_URL = "https://hrekooheseafvocxaquy.supabase.co";
   var SB_KEY = "sb_publishable_0irDxEwBNClNY3RjehMxQQ_wAFN0r-b";
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1 };
+  var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1, tiktok_retry: 1, tiktok_on: 1, tiktok_off: 1 };
 
   var mcp = null, snap = null, busy = false, confirming = null, timer = null;
   var $ = function (id) { return document.getElementById(id); };
@@ -470,10 +483,33 @@ a { color: var(--mint-soft); }
     var p7 = s.posted_7d || { reel: 0, carousel: 0 };
     $("posted-note").textContent = "Last 7 days: " + plural(p7.reel, "reel", "reels") + ", " + plural(p7.carousel, "carousel", "carousels");
     fill($("list-posted"), s.posted.length ? s.posted.map(function (p) {
-      var link = typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0
-        ? h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, ["Open on Instagram"]) : null;
-      return row(p, [stamp(p.posted_at, set.timezone)], link ? [link] : []);
+      var acts = [];
+      if (typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0)
+        acts.push(h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, ["Instagram"]));
+      if (typeof p.tt_url === "string" && p.tt_url.indexOf("https://www.tiktok.com/") === 0)
+        acts.push(h("a", { href: p.tt_url, target: "_blank", rel: "noopener" }, ["TikTok"]));
+      if (p.tt_status === "failed") acts.push(btn("Retry TikTok", "", function () { act("tiktok_retry", p.id); }));
+      var ttWords = { queued: "TikTok: waiting", publishing: "TikTok: uploading", posted: "TikTok: posted", failed: "TikTok: failed", skipped: "TikTok: not sent" };
+      var metas = [stamp(p.posted_at, set.timezone)];
+      if (p.tt_status) metas.push(h("span", { class: p.tt_status === "failed" ? "err" : "" }, [ttWords[p.tt_status] + (p.tt_status === "failed" && p.tt_error ? " (" + cleanMessage(p.tt_error) + ")" : "")]));
+      return row(p, metas, acts);
     }) : [h("div", { class: "blank" }, ["Nothing posted yet."])]);
+
+    // TikTok
+    var tt = $("tt-pill");
+    tt.hidden = !set.has_key;
+    if (set.has_tiktok) { tt.className = set.tiktok_enabled ? "pill ok" : "pill off"; tt.textContent = "TikTok: " + (set.tiktok_username ? "@" + set.tiktok_username : "connected") + (set.tiktok_enabled ? "" : " (paused)"); }
+    else { tt.className = "pill off"; tt.textContent = "TikTok: not connected"; }
+    $("sec-tiktok").hidden = !set.has_token;
+    $("tt-title").textContent = set.has_tiktok ? "Connected" + (set.tiktok_username ? " as @" + set.tiktok_username : "") : "Not connected";
+    $("tt-text").textContent = set.has_tiktok
+      ? (set.tiktok_enabled ? "Every post that goes out on Instagram is also posted to TikTok a few minutes later." : "TikTok posting is paused. Instagram keeps posting.")
+      : "Connect TikTok and every Instagram post is also posted there automatically.";
+    $("btn-tt-connect").textContent = set.has_tiktok ? "Reconnect TikTok" : "Connect TikTok";
+    $("btn-tt-connect").className = set.has_tiktok ? "" : "primary";
+    $("btn-tt-toggle").hidden = !set.has_tiktok;
+    $("btn-tt-toggle").textContent = set.tiktok_enabled ? "Pause TikTok" : "Resume TikTok";
+    $("btn-tt-connect").disabled = linkBusy || busy; $("btn-tt-toggle").disabled = busy;
 
     var tick = set.last_tick_at ? "Last timer run " + stamp(set.last_tick_at, set.timezone) + (set.last_tick_note ? " · " + set.last_tick_note : "") : "The timer has not run yet";
     $("foot").textContent = tick + " · Checked " + stamp(s.now, set.timezone) + " " + set.timezone;
@@ -542,6 +578,13 @@ a { color: var(--mint-soft); }
       location.href = j.authUrl;
     });
   });
+  $("btn-tt-connect").addEventListener("click", function () {
+    var m = $("tt-msg"); m.className = "msg"; m.textContent = "Opening the TikTok login";
+    fn({ action: "connect_url", platform: "tiktok", redirect_url: location.origin + location.pathname })
+      .then(function (j) { location.href = j.authUrl; })
+      .catch(function (e) { m.className = "msg bad"; m.textContent = e.message; });
+  });
+  $("btn-tt-toggle").addEventListener("click", function () { if (snap) act(snap.settings.tiktok_enabled ? "tiktok_off" : "tiktok_on"); });
   $("btn-recheck").addEventListener("click", function () { recheck(false); });
   $("btn-rekey").addEventListener("click", function () { rekey = true; linkMsg(""); if (snap) renderLink(snap.settings); });
 
@@ -600,7 +643,7 @@ a { color: var(--mint-soft); }
   var sb = window.supabase.createClient(SB_URL, SB_KEY);
   function show(signedIn) {
     $("login").hidden = signedIn; $("app").hidden = !signedIn; $("btn-signout").hidden = !signedIn;
-    $("btn-pause").hidden = !signedIn; $("btn-refresh").hidden = !signedIn; $("ig-pill").hidden = !signedIn;
+    $("btn-pause").hidden = !signedIn; $("btn-refresh").hidden = !signedIn; $("ig-pill").hidden = !signedIn; if (!signedIn) $("tt-pill").hidden = true;
   }
   function signOut() {
     clearInterval(timer); timer = null; mcp = null; snap = null; clearNotice();
