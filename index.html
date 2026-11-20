@@ -128,6 +128,20 @@ a { color: var(--mint-soft); }
 .kind.carousel { border: 1px solid var(--mint); color: var(--mint); }
 .when { font-family: var(--mono); font-size: 12px; color: var(--mint-soft); }
 .blank { padding: 16px 14px; color: var(--muted); font-size: 14px; }
+
+/* Stats table: scrolls inside its own box on narrow screens */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stats th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.stats td { padding: 10px 12px; vertical-align: top; }
+.stats tbody tr + tr td { border-top: 1px solid var(--line); }
+.stats .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats td.n { font-family: var(--mono); font-size: 14px; color: var(--text); }
+.stats .post { min-width: 220px; font-weight: 600; overflow-wrap: anywhere; }
+.stats .post .meta { font-weight: 400; font-size: 12px; color: var(--muted); }
+.stats .post .meta.err { color: var(--bad); }
+.stats .time { white-space: nowrap; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.stats .tags { min-width: 180px; color: var(--mint-soft); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .foot { font-size: 12px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
 
 /* Sign-in */
@@ -159,6 +173,8 @@ a { color: var(--mint-soft); }
   .plan { grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 4px; }
   .cell { padding: 6px 7px; }
   .cell .what { font-size: 12px; }
+  .stats .post { min-width: 150px; }
+  .stats th, .stats td { padding-left: 8px; padding-right: 8px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   button, .cell { transition: border-color 0.12s, color 0.12s, background 0.12s; }
@@ -240,8 +256,16 @@ a { color: var(--mint-soft); }
   </section>
 
   <section class="sec">
-    <div class="sec-head"><h2>Posted</h2><span id="posted-note"></span></div>
+    <div class="sec-head"><h2>Posted · last 24 hours</h2><span id="posted-note"></span></div>
     <div class="list" id="list-posted"><div class="blank">Loading history</div></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Stats</h2><span id="stats-note"></span></div>
+    <div class="tablewrap"><table class="stats">
+      <thead><tr><th scope="col">Post</th><th scope="col" class="n">Views</th><th scope="col" class="n">Likes</th><th scope="col" class="n">Comments</th><th scope="col">Posted</th><th scope="col">Hashtags</th></tr></thead>
+      <tbody id="stats-body"><tr><td colspan="6" class="blank">Loading stats</td></tr></tbody>
+    </table></div>
   </section>
 
   <section class="sec" id="sec-tiktok" hidden>
@@ -474,11 +498,24 @@ a { color: var(--mint-soft); }
       return row(p, [h("span", { class: "when" }, [slotText]), mediaLine(p)], actions);
     }) : [h("div", { class: "blank" }, ["The queue is empty. Approve a draft to schedule it into the next free slot."])]);
 
-    $("sec-problems").hidden = problems.length === 0;
+    $("sec-problems").hidden = problems.length + s.side_failed.length === 0;
     fill($("list-problems"), problems.map(function (p) {
       if (p.status === "publishing") return row(p, ["Uploading to Instagram. This can take a few minutes for reels."], []);
       return row(p, [h("span", { class: "meta err" }, [p.error || "Publishing failed"])], [btn("Put back in queue", "", function () { act("retry", p.id); })]);
-    }));
+    }).concat(s.side_failed.map(function (p) {
+      // Live on Instagram, but its story or TikTok copy failed. Listed here until fixed, whatever its age.
+      var metas = ["On Instagram " + stamp(p.posted_at, set.timezone)], acts = [];
+      if (p.st_status === "failed") metas.push(h("span", { class: "err" }, ["Story failed: " + cleanMessage(p.st_error)]));
+      if (p.tt_status === "failed") {
+        metas.push(h("span", { class: "err" }, ["TikTok failed: " + cleanMessage(p.tt_error)]));
+        acts.push(btn("Retry TikTok", "", function () { act("tiktok_retry", p.id); }));
+      }
+      if (typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0)
+        acts.unshift(h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, ["Instagram"]));
+      return row(p, metas, acts);
+    })));
+
+    renderStats(s);
 
     var p7 = s.posted_7d || { reel: 0, carousel: 0 };
     $("posted-note").textContent = "Last 7 days: " + plural(p7.reel, "reel", "reels") + ", " + plural(p7.carousel, "carousel", "carousels");
@@ -495,7 +532,7 @@ a { color: var(--mint-soft); }
       if (p.st_status && stWords[p.st_status]) metas.push(h("span", { class: p.st_status === "failed" ? "err" : "" }, [stWords[p.st_status] + (p.st_status === "failed" && p.st_error ? " (" + cleanMessage(p.st_error) + ")" : "")]));
       if (p.tt_status) metas.push(h("span", { class: p.tt_status === "failed" ? "err" : "" }, [ttWords[p.tt_status] + (p.tt_status === "failed" && p.tt_error ? " (" + cleanMessage(p.tt_error) + ")" : "")]));
       return row(p, metas, acts);
-    }) : [h("div", { class: "blank" }, ["Nothing posted yet."])]);
+    }) : [h("div", { class: "blank" }, ["Nothing posted in the last 24 hours."])]);
 
     // TikTok
     var tt = $("tt-pill");
@@ -517,6 +554,27 @@ a { color: var(--mint-soft); }
     $("foot").textContent = tick + " · Checked " + stamp(s.now, set.timezone) + " " + set.timezone;
 
     renderLink(set);
+  }
+
+  // ---- Stats: one row per Instagram post, newest first ---------------------
+  function renderStats(s) {
+    var tz = s.settings.timezone;
+    var num = function (v) { return v === null || v === undefined ? "–" : Number(v).toLocaleString("en-US"); };
+    $("stats-note").textContent = "From Instagram via Zernio, refreshed every 3 hours for 30 days · Times in " + tz;
+    fill($("stats-body"), s.stats.length ? s.stats.map(function (p) {
+      var title = typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0
+        ? h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, [p.title]) : p.title;
+      var sub = p.stats_error ? h("div", { class: "meta err" }, ["Stats failed: " + cleanMessage(p.stats_error)])
+        : h("div", { class: "meta" }, [p.stats_at ? "Updated " + stamp(p.stats_at, tz) : "Not collected yet"]);
+      return h("tr", null, [
+        h("td", { class: "post" }, [h("span", { class: "kind " + p.kind }, [p.kind]), title, sub]),
+        h("td", { class: "n" }, [num(p.views)]),
+        h("td", { class: "n" }, [num(p.likes)]),
+        h("td", { class: "n" }, [num(p.comments)]),
+        h("td", { class: "time" }, [stamp(p.posted_at, tz)]),
+        h("td", { class: "tags" }, [p.hashtags.length ? p.hashtags.map(function (t) { return "#" + t; }).join(" ") : "–"])
+      ]);
+    }) : [h("tr", null, [h("td", { colspan: "6", class: "blank" }, ["Nothing posted yet."])])]);
   }
 
   // ---- Instagram connection (through Zernio) ------------------------------
