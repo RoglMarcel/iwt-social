@@ -166,15 +166,72 @@ a { color: var(--mint-soft); }
 .link .small { font-size: 13px; }
 .app { display: flex; flex-direction: column; gap: 28px; }
 
+/* Compact board: everything on one screen on a laptop or desktop.
+   Two columns from 1100px; below that the panels stack. Rows are one line; full text shows on hover. */
+body { font-size: 13px; }
+.wrap { max-width: 1480px; padding-block: 8px 6px; gap: 10px; }
+.app { gap: 10px; }
+.top { gap: 8px 16px; }
+.brand { flex-direction: row; align-items: baseline; gap: 12px; }
+.mark { font-size: 10px; letter-spacing: 0.22em; }
+h1 { font-size: 17px; }
+h2 { font-size: 11px; }
+button { font-size: 12px; padding: 3px 9px; }
+button.icon { padding: 3px 7px; }
+.pill { font-size: 12px; padding: 3px 10px; }
+.board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (min-width: 1100px) { .board { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
+.sec { gap: 4px; }
+.sec-head span { font-size: 12px; }
+.stock > div { padding: 7px 12px; gap: 0; }
+.stock .label { font-size: 10px; }
+.stock .num { font-size: 22px; }
+.stock .num small { font-size: 12px; }
+.stock .sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan { grid-template-columns: 96px repeat(3, minmax(0, 1fr)); gap: 3px; }
+.plan .day { font-size: 11px; white-space: nowrap; }
+.plan .day b { display: inline; margin-right: 4px; }
+.plan .colhead { font-size: 11px; padding: 0 8px; }
+.cell { min-height: 0; padding: 3px 8px; gap: 6px; flex-direction: row; align-items: baseline; }
+.cell .state { flex: 0 0 auto; }
+.cell .state { font-size: 9px; }
+.cell .what { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.row { padding: 5px 10px; gap: 4px 10px; flex-wrap: nowrap; }
+.row .main { flex: 1 1 auto; gap: 10px; flex-direction: row; align-items: baseline; }
+.row .main .title { flex: 0 1 auto; max-width: 62%; }
+.row .main .meta { flex: 1 1 0; min-width: 0; }
+.row .title, .row .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.row .title { font-size: 13px; }
+.row .meta { font-size: 12px; }
+.row .actions { flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; }
+.kind { font-size: 9px; padding: 1px 5px; margin-right: 6px; }
+.tag { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid var(--muted); color: var(--muted); border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+.more { padding: 5px 10px; border-top: 1px solid var(--line); display: flex; justify-content: center; }
+.blank { padding: 8px 10px; font-size: 12px; }
+.stats { font-size: 12px; table-layout: fixed; }
+.stats th { padding: 6px 8px; font-size: 10px; }
+.stats td { padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats th:nth-child(1) { width: 31%; } .stats th:nth-child(2) { width: 9%; } .stats th:nth-child(3) { width: 7%; }
+.stats th:nth-child(4) { width: 8%; } .stats th:nth-child(5) { width: 17%; }
+.stats td.n { font-size: 12px; }
+.stats .post { min-width: 0; overflow-wrap: normal; }
+.stats .post .meta { display: none; }
+.stats .post .meta.err { display: inline; margin-left: 6px; }
+.stats .tags, .stats .time { min-width: 0; font-size: 11px; overflow-wrap: normal; }
+.foot { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg:empty { display: none; }
+
 @media (max-width: 640px) {
-  .stock { grid-template-columns: 1fr; }
-  .stock > div + div { border-left: 0; border-top: 1px solid var(--line); }
-  .stock .num { font-size: 36px; }
-  .plan { grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 4px; }
-  .cell { padding: 6px 7px; }
-  .cell .what { font-size: 12px; }
-  .stats .post { min-width: 150px; }
-  .stats th, .stats td { padding-left: 8px; padding-right: 8px; }
+  .stock > div { padding: 6px 8px; }
+  .plan { grid-template-columns: 60px repeat(3, minmax(0, 1fr)); }
+  .plan .day { font-size: 10px; }
+  .plan .day b { display: block; margin: 0; }
+  .row { flex-wrap: wrap; }
+  .row .main { flex-direction: column; gap: 0; }
+  .row .main .title { max-width: 100%; }
+  .cell { flex-direction: column; align-items: stretch; gap: 0; }
+  .stats { min-width: 620px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   button, .cell { transition: border-color 0.12s, color 0.12s, background 0.12s; }
@@ -184,7 +241,7 @@ a { color: var(--mint-soft); }
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="mark"><span class="dots"><i></i><i></i><i></i></span>INSIDER WHALE TERMINAL</div>
+      <span class="mark"><span class="dots"><i></i><i></i><i></i></span>INSIDER WHALE TERMINAL</span>
       <h1>Social queue</h1>
     </div>
     <div class="controls">
@@ -229,56 +286,61 @@ a { color: var(--mint-soft); }
     <div class="msg" id="link-msg" role="status"></div>
   </section>
 
-  <section class="stock" aria-label="Stock">
-    <div id="st-reel"><span class="label">Reels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
-    <div id="st-carousel"><span class="label">Carousels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
-    <div id="st-runway"><span class="label">Runway</span><span class="num">–</span><span class="sub">Plan: 2 reels and 1 carousel a day</span></div>
-  </section>
+  <div class="board">
+    <div class="col">
+      <section class="stock" aria-label="Stock">
+        <div id="st-reel"><span class="label">Reels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
+        <div id="st-carousel"><span class="label">Carousels queued</span><span class="num">–</span><span class="sub">Loading the queue</span></div>
+        <div id="st-runway"><span class="label">Runway</span><span class="num">–</span><span class="sub">Plan: 2 reels and 1 carousel a day</span></div>
+      </section>
 
-  <section class="sec">
-    <div class="sec-head"><h2>Next 7 days</h2><span id="plan-note"></span></div>
-    <div class="plan" id="plan"></div>
-  </section>
+      <section class="sec">
+        <div class="sec-head"><h2>Next 7 days</h2><span id="plan-note"></span></div>
+        <div class="plan" id="plan"></div>
+      </section>
 
-  <section class="sec" id="sec-problems" hidden>
-    <div class="sec-head"><h2>Needs attention</h2><span>Failed posts are never retried automatically</span></div>
-    <div class="list" id="list-problems"></div>
-  </section>
+      <section class="sec">
+        <div class="sec-head"><h2>Queue</h2><span id="queue-note">Approved posts, in posting order</span></div>
+        <div class="list" id="list-queue"><div class="blank">Loading the queue</div></div>
+      </section>
 
-  <section class="sec">
-    <div class="sec-head"><h2>Waiting for your approval</h2><span id="draft-note"></span></div>
-    <div class="list" id="list-drafts"><div class="blank">Loading drafts</div></div>
-  </section>
+      <section class="sec" id="sec-tiktok" hidden>
+        <div class="list"><div class="row">
+          <div class="main"><div class="title"><span class="tag">TikTok</span><span id="tt-title">TikTok</span></div><div class="meta" id="tt-text"></div></div>
+          <div class="actions">
+            <button class="primary" id="btn-tt-connect">Connect TikTok</button>
+            <button id="btn-tt-toggle" hidden>Pause TikTok</button>
+          </div>
+        </div></div>
+        <div class="msg" id="tt-msg" role="status"></div>
+      </section>
+    </div>
 
-  <section class="sec">
-    <div class="sec-head"><h2>Queue</h2><span>Approved posts, in posting order</span></div>
-    <div class="list" id="list-queue"><div class="blank">Loading the queue</div></div>
-  </section>
+    <div class="col">
+      <section class="sec" id="sec-problems" hidden>
+        <div class="sec-head"><h2>Needs attention</h2><span>Failed posts are never retried automatically</span></div>
+        <div class="list" id="list-problems"></div>
+      </section>
 
-  <section class="sec">
-    <div class="sec-head"><h2>Posted · last 24 hours</h2><span id="posted-note"></span></div>
-    <div class="list" id="list-posted"><div class="blank">Loading history</div></div>
-  </section>
+      <section class="sec" id="sec-drafts" hidden>
+        <div class="sec-head"><h2>Waiting for your approval</h2><span>Nothing here is posted until you approve it</span></div>
+        <div class="list" id="list-drafts"></div>
+      </section>
 
-  <section class="sec">
-    <div class="sec-head"><h2>Stats</h2><span id="stats-note"></span></div>
-    <div class="tablewrap"><table class="stats">
-      <thead><tr><th scope="col">Post</th><th scope="col" class="n">Views</th><th scope="col" class="n">Likes</th><th scope="col" class="n">Comments</th><th scope="col">Posted</th><th scope="col">Hashtags</th></tr></thead>
-      <tbody id="stats-body"><tr><td colspan="6" class="blank">Loading stats</td></tr></tbody>
-    </table></div>
-  </section>
+      <section class="sec">
+        <div class="sec-head"><h2>Top 15 by views</h2><span id="stats-note"></span></div>
+        <div class="tablewrap"><table class="stats">
+          <thead><tr><th scope="col">Post</th><th scope="col" class="n">Views</th><th scope="col" class="n">Likes</th><th scope="col" class="n">Comm.</th><th scope="col">Posted</th><th scope="col">Hashtags</th></tr></thead>
+          <tbody id="stats-body"><tr><td colspan="6" class="blank">Loading stats</td></tr></tbody>
+        </table></div>
+      </section>
 
-  <section class="sec" id="sec-tiktok" hidden>
-    <div class="sec-head"><h2>TikTok</h2><span id="tt-note"></span></div>
-    <div class="list"><div class="row">
-      <div class="main"><div class="title" id="tt-title">TikTok</div><div class="meta" id="tt-text"></div></div>
-      <div class="actions">
-        <button class="primary" id="btn-tt-connect">Connect TikTok</button>
-        <button id="btn-tt-toggle" hidden>Pause TikTok</button>
-      </div>
-    </div></div>
-    <div class="msg" id="tt-msg" role="status"></div>
-  </section>
+      <section class="sec">
+        <div class="sec-head"><h2>Posted · last 24 hours</h2><span id="posted-note"></span></div>
+        <div class="list" id="list-posted"><div class="blank">Loading history</div></div>
+      </section>
+    </div>
+  </div>
 
   <div class="foot" id="foot"></div>
   </div>
@@ -295,6 +357,7 @@ a { color: var(--mint-soft); }
   var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1, tiktok_retry: 1, tiktok_on: 1, tiktok_off: 1 };
 
   var mcp = null, snap = null, busy = false, confirming = null, timer = null;
+  var QUEUE_STEP = 5, queueShown = QUEUE_STEP; // Queue shows this many rows; "Load more" adds the same again.
   var $ = function (id) { return document.getElementById(id); };
 
   function h(tag, props, kids) {
@@ -472,12 +535,13 @@ a { color: var(--mint-soft); }
     var queue = s.posts.filter(function (p) { return p.status === "approved"; });
     var problems = s.posts.filter(function (p) { return p.status === "failed" || p.status === "publishing"; });
 
-    $("draft-note").textContent = drafts.length ? "Nothing here is posted until you approve it" : "";
-    fill($("list-drafts"), drafts.length ? drafts.map(function (p) {
+    $("sec-drafts").hidden = drafts.length === 0;
+    fill($("list-drafts"), drafts.map(function (p) {
       return row(p, [mediaLinks(p), p.caption ? p.caption : "No caption yet"], [btn("Approve", "primary", function () { act("approve", p.id); })]);
-    }) : [h("div", { class: "blank" }, ["No drafts. When Claude adds a reel or carousel, it shows up here for your approval."])]);
+    }));
 
-    fill($("list-queue"), queue.length ? queue.map(function (p) {
+    $("queue-note").textContent = queue.length ? plural(queue.length, "post", "posts") + " approved, in posting order" : "";
+    var queueRows = queue.slice(0, queueShown).map(function (p) {
       var same = queue.filter(function (x) { return x.kind === p.kind; });
       var idx = same.indexOf(p), actions;
       if (confirming === p.id) {
@@ -496,7 +560,13 @@ a { color: var(--mint-soft); }
       }
       var slotText = p.publish_now ? "Posting within 5 minutes" : (plan.when[p.id] || "Beyond 60 days");
       return row(p, [h("span", { class: "when" }, [slotText]), mediaLine(p)], actions);
-    }) : [h("div", { class: "blank" }, ["The queue is empty. Approve a draft to schedule it into the next free slot."])]);
+    });
+    if (queue.length > queueShown) {
+      var left = queue.length - queueShown;
+      queueRows.push(h("div", { class: "more" }, [btn("Load more (" + left + " left)", "", function () { queueShown += QUEUE_STEP; render(); })]));
+    }
+    fill($("list-queue"), queue.length ? queueRows
+      : [h("div", { class: "blank" }, ["The queue is empty. Approve a draft to schedule it into the next free slot."])]);
 
     $("sec-problems").hidden = problems.length + s.side_failed.length === 0;
     fill($("list-problems"), problems.map(function (p) {
@@ -560,7 +630,7 @@ a { color: var(--mint-soft); }
   function renderStats(s) {
     var tz = s.settings.timezone;
     var num = function (v) { return v === null || v === undefined ? "–" : Number(v).toLocaleString("en-US"); };
-    $("stats-note").textContent = "From Instagram via Zernio, refreshed every 3 hours for 30 days · Times in " + tz;
+    $("stats-note").textContent = "Refreshed every 3 hours · Times in " + tz;
     fill($("stats-body"), s.stats.length ? s.stats.map(function (p) {
       var title = typeof p.ig_permalink === "string" && p.ig_permalink.indexOf("https://www.instagram.com/") === 0
         ? h("a", { href: p.ig_permalink, target: "_blank", rel: "noopener" }, [p.title]) : p.title;
@@ -572,7 +642,7 @@ a { color: var(--mint-soft); }
         h("td", { class: "n" }, [num(p.likes)]),
         h("td", { class: "n" }, [num(p.comments)]),
         h("td", { class: "time" }, [stamp(p.posted_at, tz)]),
-        h("td", { class: "tags" }, [p.hashtags.length ? p.hashtags.map(function (t) { return "#" + t; }).join(" ") : "–"])
+        h("td", { class: "tags", title: p.hashtags.map(function (t) { return "#" + t; }).join(" ") }, [p.hashtags.length ? p.hashtags.map(function (t) { return "#" + t; }).join(" ") : "–"])
       ]);
     }) : [h("tr", null, [h("td", { colspan: "6", class: "blank" }, ["Nothing posted yet."])])]);
   }
@@ -664,10 +734,12 @@ a { color: var(--mint-soft); }
   function row(p, metas, actions) {
     var meta = [];
     metas.forEach(function (m, i) { if (i) meta.push(" · "); meta.push(m); });
+    var metaEl = h("div", { class: "meta" }, meta);
+    metaEl.title = metaEl.textContent; // rows are one line; the full text shows on hover
     return h("div", { class: "row" }, [
       h("div", { class: "main" }, [
-        h("div", { class: "title" }, [h("span", { class: "kind " + p.kind }, [p.kind]), p.title]),
-        h("div", { class: "meta" }, meta)
+        h("div", { class: "title", title: p.title }, [h("span", { class: "kind " + p.kind }, [p.kind]), p.title]),
+        metaEl
       ]),
       actions.length ? h("div", { class: "actions" }, actions) : null
     ]);
