@@ -55,18 +55,28 @@ Headlines:
 ${list}`;
 }
 
+// Google answers 429 or 5xx when the model is overloaded ("high demand"): wait and ask again.
+const OVERLOAD_WAITS_S = [30, 60, 120];
+
 async function gemini(text) {
   const model = need("GEMINI_MODEL");
   const base = "https://generativelanguage.googleapis.com/v1beta";
-  const res = await fetch(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": need("GEMINI_API_KEY") },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-    }),
-  });
-  const j = await res.json().catch(() => ({}));
+  let res, j;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": need("GEMINI_API_KEY") },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+      }),
+    });
+    j = await res.json().catch(() => ({}));
+    const overloaded = res.status === 429 || res.status >= 500;
+    if (!overloaded || attempt === OVERLOAD_WAITS_S.length) break;
+    console.log(`Gemini overloaded (HTTP ${res.status}: ${j.error?.message ?? ""}). Waiting ${OVERLOAD_WAITS_S[attempt]}s.`);
+    await new Promise((r) => setTimeout(r, OVERLOAD_WAITS_S[attempt] * 1000));
+  }
   if (res.status === 404) {
     const list = await fetch(`${base}/models`, { headers: { "x-goog-api-key": need("GEMINI_API_KEY") } }).then((r) => r.json());
     const names = (list.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
