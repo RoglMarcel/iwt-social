@@ -721,6 +721,19 @@ Deno.serve(async (req: Request) => {
       return json(rows[0]);
     }
 
+    // Delete named storage files that no post uses. Refuses the whole list if any file is in use.
+    case "delete_unused_files": {
+      const paths: string[] = Array.isArray(body.paths) ? body.paths.map(String) : [];
+      if (!paths.length || paths.length > 100) return json({ error: "Give 1 to 100 paths" }, 400);
+      const used = await sql`select u.url from iwt.posts p,
+        lateral (select jsonb_array_elements_text(p.media) url union all select p.story_url union all select p.cover_url) u
+        where u.url = any(${paths.map((x) => STORAGE_PREFIX + x)})`;
+      if (used.length) return json({ error: `Still used by a post: ${used.map((r) => r.url).join(", ")}` }, 409);
+      const { data, error } = await service().storage.from("media").remove(paths);
+      if (error) return json({ error: error.message }, 502);
+      return json({ deleted: (data ?? []).map((o: any) => o.name) });
+    }
+
     // The news job failed for a day: shown on the dashboard under Needs attention.
     case "news_failed": {
       const date = String(body.news_date ?? "");
