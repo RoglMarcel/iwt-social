@@ -1,0 +1,9 @@
+{
+  "name": "iwt-news-brief",
+  "private": true,
+  "type": "module",
+  "description": "Daily news brief carousel for Insider Whale Terminal (runs in GitHub Actions).",
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}

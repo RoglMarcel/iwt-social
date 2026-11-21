@@ -1,0 +1,29 @@
+# Daily news brief carousel. Builds the slides and queues them for the 08:00 New York news slot.
+# 10:30 UTC is 05:30 New York in winter and 06:30 in summer. GitHub can start scheduled jobs late,
+# and the post can still go out until 11:00 New York.
+name: News brief
+
+on:
+  schedule:
+    - cron: "30 10 * * *"
+  workflow_dispatch:
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: news-brief
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node news-brief.mjs
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          IWT_SECRET: ${{ secrets.IWT_SECRET }}

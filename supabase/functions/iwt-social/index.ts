@@ -325,6 +325,74 @@ async function statsPass(key: string, deadline: number) {
   return due.length ? ` · Stats: updated ${counts.updated}, failed ${counts.failed}` : "";
 }
 
+// ---- Clean-up: delete a post's files from storage 2 days after it was posted ----
+// Instagram and TikTok keep their own copies; ours only cost storage (free plan: 1 GB).
+const STORAGE_PREFIX = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/media/`;
+
+async function cleanupPass() {
+  const due = await sql`select id, media, story_url, cover_url from iwt.posts
+                        where status = 'posted' and posted_at < now() - interval '2 days' and media_purged_at is null
+                        order by posted_at limit 10`;
+  for (const p of due) {
+    const urls: string[] = [...(Array.isArray(p.media) ? p.media : []), p.story_url, p.cover_url]
+      .filter((u) => typeof u === "string" && u.startsWith(STORAGE_PREFIX));
+    const paths = urls.map((u) => decodeURIComponent(u.slice(STORAGE_PREFIX.length)));
+    if (paths.length) {
+      const { error } = await service().storage.from("media").remove(paths);
+      if (error) throw new Error(`Storage refused the delete: ${error.message}`);
+    }
+    await sql`update iwt.posts set media_purged_at = now() where id = ${p.id}`;
+  }
+  return due.length ? ` · Clean-up: ${due.length} posts` : "";
+}
+
+// ---- News: collect headlines from RSS every 30 minutes for the daily brief ----
+const FEEDS = [
+  { source: "CNBC", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114" },
+  { source: "MarketWatch", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories" },
+];
+
+function rssText(item: string, tag: string): string {
+  const m = item.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`));
+  if (!m) return "";
+  return m[1].replace(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim();
+}
+
+async function newsPass() {
+  const [s] = await sql`select news_fetched_at from iwt.settings where id = 1`;
+  if (s.news_fetched_at && Date.now() - new Date(s.news_fetched_at).getTime() < 30 * 6e4) return "";
+  let added = 0;
+  const errors: string[] = [];
+  for (const feed of FEEDS) {
+    try {
+      const res = await fetch(feed.url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const items = (await res.text()).match(/<item>[\s\S]*?<\/item>/g) ?? [];
+      if (!items.length) throw new Error("no items in the feed");
+      for (const it of items) {
+        const title = rssText(it, "title"), link = rssText(it, "link"), guid = rssText(it, "guid") || link;
+        const published = new Date(rssText(it, "pubDate"));
+        if (!title || !link || isNaN(published.getTime())) continue; // not a usable headline
+        const rows = await sql`insert into iwt.headlines (id, source, title, summary, link, published_at)
+          values (${feed.source + ":" + guid}, ${feed.source}, ${title}, ${rssText(it, "description")}, ${link}, ${published})
+          on conflict (id) do nothing returning 1`;
+        added += rows.length;
+      }
+    } catch (e) {
+      errors.push(`${feed.source}: ${(e as Error).message}`);
+    }
+  }
+  await sql`delete from iwt.headlines where published_at < now() - interval '7 days'`;
+  await sql`update iwt.settings set news_fetched_at = now() where id = 1`;
+  return ` · News: ${added} new headlines` + (errors.length ? ` (feed error: ${errors.join("; ")})` : "");
+}
+
 async function fail(id: string, message: string) {
   await sql`update iwt.posts set status = 'failed', error = ${message}, publish_now = false where id = ${id}`;
 }
@@ -439,16 +507,22 @@ async function tick() {
              provider_post_id = null, publish_attempted_at = null
       where id in (select id from iwt.posts where status = 'approved' and publish_now order by position limit 2)
       returning *`];
+    const [loc] = await sql`select (now() at time zone ${s.timezone})::date::text as d,
+                                   to_char(now() at time zone ${s.timezone}, 'HH24:MI') as hm`;
+    // A news brief is valid only on its own day: one that did not go out has expired.
+    await sql`update iwt.posts set status = 'failed', publish_now = false,
+              error = 'This news brief was not posted on its day, so it expired. Nothing was published.'
+              where lane = 'news' and status = 'approved' and news_date < ${loc.d}::date`;
     if (!s.paused) {
-      const [loc] = await sql`select (now() at time zone ${s.timezone})::date::text as d,
-                                     to_char(now() at time zone ${s.timezone}, 'HH24:MI') as hm`;
       for (const [i, slot] of (s.slots as any[]).entries()) {
         const late = mins(loc.hm) - mins(slot.time);
         if (late < 0 || late > s.grace_minutes) continue;
+        const lane = slot.lane ?? "regular";
         claimed.push(...await sql`
           update iwt.posts set status = 'publishing', slot_date = ${loc.d}::date, slot_index = ${i},
                  publishing_started_at = now(), provider_post_id = null, publish_attempted_at = null
-          where id = (select id from iwt.posts where status = 'approved' and kind = ${slot.kind}
+          where id = (select id from iwt.posts where status = 'approved' and kind = ${slot.kind} and lane = ${lane}
+                        and (lane = 'regular' or news_date = ${loc.d}::date)
                       order by position limit 1 for update skip locked)
             and not exists (select 1 from iwt.posts where slot_date = ${loc.d}::date and slot_index = ${i})
           returning *`);
@@ -464,6 +538,8 @@ async function tick() {
     note += await storyPass(key, accountId, began + 50000).catch((e) => ` · Story error: ${(e as Error).message}`);
     note += await tiktokPass(key, began + 70000).catch((e) => ` · TikTok error: ${(e as Error).message}`);
     note += await statsPass(key, began + 85000).catch((e) => ` · Stats error: ${(e as Error).message}`);
+    note += await newsPass().catch((e) => ` · News error: ${(e as Error).message}`);
+    note += await cleanupPass().catch((e) => ` · Clean-up error: ${(e as Error).message}`);
     return { ok: true, note, counts };
   } catch (e) {
     note = (e as Error).message;
@@ -612,6 +688,46 @@ Deno.serve(async (req: Request) => {
                 ${body.cover_url ?? null}, ${body.evidence_note ?? null}, ${String(body.created_by ?? "claude")})
         returning id, status`;
       return json(row);
+    }
+
+    // For the daily news job: the last 24 hours of headlines, and whether today's brief exists.
+    case "news_headlines": {
+      const date = String(body.news_date ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "news_date must be YYYY-MM-DD" }, 400);
+      const [made] = await sql`select id, status from iwt.posts where lane = 'news' and news_date = ${date}::date`;
+      const rows = await sql`select distinct on (lower(title)) id, source, title, summary, link, published_at
+                             from iwt.headlines where published_at > now() - interval '24 hours'
+                             order by lower(title), published_at desc`;
+      return json({ exists: !!made, headlines: rows });
+    }
+
+    // The daily news brief: a carousel queued straight into the news slot of its day.
+    case "add_news": {
+      const date = String(body.news_date ?? "");
+      const media = Array.isArray(body.media) ? body.media.map(String) : [];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "news_date must be YYYY-MM-DD" }, 400);
+      if (media.length < 2 || media.length > 10 || media.some((u) => !u.startsWith(STORAGE_PREFIX))) {
+        return json({ error: "A news brief needs 2 to 10 slides uploaded to our storage" }, 400);
+      }
+      if (!String(body.caption ?? "").trim() || !body.title) return json({ error: "title and caption are required" }, 400);
+      const rows = await sql`
+        insert into iwt.posts (kind, lane, news_date, title, caption, media, evidence_note, created_by, status, approved_at)
+        values ('carousel', 'news', ${date}::date, ${String(body.title)}, ${String(body.caption)}, ${sql.json(media)},
+                ${body.evidence_note ?? null}, 'news-job', 'approved', now())
+        on conflict (news_date) where lane = 'news' do nothing
+        returning id, status`;
+      if (!rows.length) return json({ error: `A news brief for ${date} already exists` }, 409);
+      await sql`update iwt.settings set news_error = null, news_error_date = null where id = 1`;
+      return json(rows[0]);
+    }
+
+    // The news job failed for a day: shown on the dashboard under Needs attention.
+    case "news_failed": {
+      const date = String(body.news_date ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "news_date must be YYYY-MM-DD" }, 400);
+      await sql`update iwt.settings set news_error = ${String(body.error ?? "Unknown error").slice(0, 1000)},
+                news_error_date = ${date}::date where id = 1`;
+      return json({ ok: true });
     }
 
     default:
