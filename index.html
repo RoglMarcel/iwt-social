@@ -355,7 +355,7 @@ button.icon { padding: 3px 7px; }
   var SB_URL = "https://hrekooheseafvocxaquy.supabase.co";
   var SB_KEY = "sb_publishable_0irDxEwBNClNY3RjehMxQQ_wAFN0r-b";
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1, tiktok_retry: 1, tiktok_on: 1, tiktok_off: 1 };
+  var ACTIONS = { approve: 1, unapprove: 1, retry: 1, up: 1, down: 1, post_now: 1, pause: 1, resume: 1, tick: 1, tiktok_retry: 1, tiktok_on: 1, tiktok_off: 1, remove: 1 };
 
   var mcp = null, snap = null, busy = false, confirming = null, timer = null;
   var QUEUE_STEP = 5, queueShown = QUEUE_STEP; // Queue shows this many rows; "Load more" adds the same again.
@@ -592,7 +592,11 @@ button.icon { padding: 3px 7px; }
     $("sec-problems").hidden = problems.length + s.side_failed.length + newsRows.length === 0;
     fill($("list-problems"), newsRows.concat(problems.map(function (p) {
       if (p.status === "publishing") return row(p, ["Uploading to Instagram. This can take a few minutes for reels."], []);
-      return row(p, [h("span", { class: "meta err" }, [p.error || "Publishing failed"])], [btn("Put back in queue", "", function () { act("retry", p.id); })]);
+      // A news brief is only valid on its day: it cannot go back in the queue, only be removed.
+      var fix = p.lane === "news"
+        ? btn("Remove", "", function () { act("remove", p.id); })
+        : btn("Put back in queue", "", function () { act("retry", p.id); });
+      return row(p, [h("span", { class: "meta err" }, [p.error || "Publishing failed"])], [fix]);
     }).concat(s.side_failed.map(function (p) {
       // Live on Instagram, but its story or TikTok copy failed. Listed here until fixed, whatever its age.
       var metas = ["On Instagram " + stamp(p.posted_at, set.timezone)], acts = [];

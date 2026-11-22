@@ -347,7 +347,20 @@ async function cleanupPass() {
     }
     await sql`update iwt.posts set media_purged_at = now() where id = ${p.id}`;
   }
-  return due.length ? ` · Clean-up: ${due.length} posts` : "";
+  // News briefs removed on the dashboard: delete their files, then the row.
+  const removed = await sql`select id, media, story_url from iwt.posts where removed_at is not null limit 10`;
+  for (const p of removed) {
+    const paths = [...(Array.isArray(p.media) ? p.media : []), p.story_url]
+      .filter((u) => typeof u === "string" && u.startsWith(STORAGE_PREFIX))
+      .map((u) => decodeURIComponent(u.slice(STORAGE_PREFIX.length)));
+    if (paths.length) {
+      const { error } = await service().storage.from("media").remove(paths);
+      if (error) throw new Error(`Storage refused the delete: ${error.message}`);
+    }
+    await sql`delete from iwt.posts where id = ${p.id}`;
+  }
+  const n = due.length + removed.length;
+  return n ? ` · Clean-up: ${n} posts` : "";
 }
 
 // ---- News: collect headlines from RSS every 30 minutes for the daily brief ----
