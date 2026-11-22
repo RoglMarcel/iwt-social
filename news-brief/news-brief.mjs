@@ -188,12 +188,14 @@ export function storyHtml(date, s, sourceNames) {
   </div>`);
 }
 
-export async function render(htmls) {
+// Renders each HTML page to a JPEG. Slides are 1080x1350 (4:5); a page with height 1920 is the 9:16 story teaser.
+export async function render(pages) {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1080, height: 1350 } });
     const out = [];
-    for (const html of htmls) {
+    for (const { html, height } of pages) {
+      await page.setViewportSize({ width: 1080, height });
       await page.setContent(html, { waitUntil: "networkidle" });
       await page.evaluate(() => document.fonts.ready);
       // Shrink a big label or headline that would overflow its box.
@@ -224,6 +226,45 @@ export async function render(htmls) {
   } finally {
     await browser.close();
   }
+}
+
+// 9:16 story teaser, in the style of the reel teasers: it sends people to the post on the feed
+// (stories made through the API cannot link to a post).
+const TEASER_CSS = `
+body { height: 1920px; }
+.teaser { width: 1080px; height: 1920px; position: relative; background: #0B1011; color: #F7FBF8;
+  display: flex; flex-direction: column; align-items: center; padding-top: 220px; }
+.teaser .brand { font-size: 30px; }
+.pill { margin-top: 48px; border: 3px solid #23F2AF; color: #23F2AF; border-radius: 999px; padding: 12px 40px;
+  font-weight: 800; font-size: 40px; letter-spacing: 0.08em; }
+.card { margin-top: 60px; width: 760px; height: 950px; border: 3px solid #23F2AF; border-radius: 44px; background: #0F1716;
+  box-shadow: 0 0 80px rgba(35, 242, 175, 0.18); position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; text-align: center; }
+.card .bars span { font-size: 112px; line-height: 1.22; }
+.card .bars { text-align: center; }
+.card .chip { font-size: 36px; }
+.card .list { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; max-width: 640px; }
+.card .list span { font-family: "JetBrains Mono", monospace; font-size: 30px; color: #6DFFD1; border: 2px solid #253C34; padding: 6px 16px; }
+.out { margin-top: 80px; font-weight: 800; font-size: 80px; letter-spacing: -0.02em; }
+.out em { font-style: normal; color: #23F2AF; }
+.sub { margin-top: 18px; font-size: 40px; color: #A0B4AE; }
+`;
+
+export function teaserHtml(date, stories) {
+  return `<!doctype html><html><head><meta charset="utf-8">${fonts}<style>${CSS}${TEASER_CSS}</style></head><body>
+  <div class="teaser"><div class="grid"></div>
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center">
+      ${brand}
+      <div class="pill">NEW POST</div>
+      <div class="card"><div class="grid"></div>
+        <span class="chip" style="position:relative">${esc(shortDate(date))}</span>
+        <div class="bars" style="position:relative"><span>Morning</span><br><span>Brief</span></div>
+        <div class="list" style="position:relative">${stories.map((s) => `<span>${esc(s.big)}</span>`).join("")}</div>
+      </div>
+      <div class="out">OUT NOW ON <em>OUR FEED</em></div>
+      <div class="sub">${STORIES} stories moving markets today</div>
+    </div>
+  </div></body></html>`;
 }
 
 // ---- Caption ---------------------------------------------------------------
@@ -262,20 +303,24 @@ async function main() {
 
   const srcNames = (s) => [...new Set(s.sources.map((i) => headlines[i].source))].join(", ");
   const allSources = [...new Set(brief.stories.flatMap((s) => s.sources.map((i) => headlines[i].source)))];
-  const jpgs = await render([coverHtml(date, brief.stories), ...brief.stories.map((s) => storyHtml(date, s, srcNames(s)))]);
+  const slides = [coverHtml(date, brief.stories), ...brief.stories.map((s) => storyHtml(date, s, srcNames(s)))];
+  const jpgs = await render([...slides.map((html) => ({ html, height: 1350 })), { html: teaserHtml(date, brief.stories), height: 1920 }]);
+  const teaser = jpgs.pop();
 
   const folder = `news/${date}-${Date.now().toString(36)}`;
-  const media = [];
-  for (const [i, jpg] of jpgs.entries()) {
-    const { signedUrl, publicUrl } = await fn({ action: "sign_upload", path: `${folder}/${String(i + 1).padStart(2, "0")}.jpg` });
+  const upload = async (name, jpg) => {
+    const { signedUrl, publicUrl } = await fn({ action: "sign_upload", path: `${folder}/${name}` });
     const put = await fetch(signedUrl, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: jpg });
-    if (!put.ok) throw new Error(`Upload of slide ${i + 1} failed: HTTP ${put.status} ${await put.text()}`);
-    media.push(publicUrl);
-  }
+    if (!put.ok) throw new Error(`Upload of ${name} failed: HTTP ${put.status} ${await put.text()}`);
+    return publicUrl;
+  };
+  const media = [];
+  for (const [i, jpg] of jpgs.entries()) media.push(await upload(`${String(i + 1).padStart(2, "0")}.jpg`, jpg));
+  const storyUrl = await upload("story.jpg", teaser);
 
   const evidence = brief.stories.map((s, n) => `${n + 1}. ` + s.sources.map((i) => headlines[i].link).join(" ")).join("\n");
   const row = await fn({
-    action: "add_news", news_date: date, media, evidence_note: evidence,
+    action: "add_news", news_date: date, media, story_url: storyUrl, evidence_note: evidence,
     title: `N · Morning Brief ${shortDate(date)}`, caption: caption(date, brief.stories, allSources),
   });
   console.log(`Queued news brief ${row.id} for ${date} with ${media.length} slides.`);

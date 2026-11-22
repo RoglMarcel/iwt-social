@@ -191,9 +191,10 @@ async function tiktokPass(key: string, deadline: number) {
   return work.length ? ` · TikTok: posted ${counts.posted}, processing ${counts.processing}, failed ${counts.failed}` : "";
 }
 
-// ---- Story: the post itself, posted as an Instagram Story after the post is live ----
+// ---- Story: posted as an Instagram Story after the post is live ----
 // Instagram stories take video up to 60 seconds. A reel of 60s or less goes up as itself;
-// a longer reel uses its 9:16 teaser image. A carousel uses its first slide.
+// a longer reel uses its 9:16 teaser image. A carousel always uses its 9:16 teaser image
+// (its 4:5 first slide looked poor in the 9:16 story frame).
 const STORY_MAX_SECONDS = 60;
 
 // Length of an MP4 in seconds, read from moov/mvhd.
@@ -226,7 +227,10 @@ async function mp4Seconds(url: string): Promise<number> {
 
 async function storyMedia(post: any): Promise<{ type: "image" | "video"; url: string }> {
   const media: string[] = post.media;
-  if (post.kind === "carousel") return { type: "image", url: media[0] };
+  if (post.kind === "carousel") {
+    if (!post.story_url) throw new Error("This carousel has no 9:16 teaser image for its story");
+    return { type: "image", url: post.story_url };
+  }
   const secs = await mp4Seconds(media[0]);
   if (secs <= STORY_MAX_SECONDS) return { type: "video", url: media[0] };
   if (!post.story_url) throw new Error(`The reel is ${Math.round(secs)}s, over the ${STORY_MAX_SECONDS}s story limit, and has no teaser image`);
@@ -710,10 +714,12 @@ Deno.serve(async (req: Request) => {
         return json({ error: "A news brief needs 2 to 10 slides uploaded to our storage" }, 400);
       }
       if (!String(body.caption ?? "").trim() || !body.title) return json({ error: "title and caption are required" }, 400);
+      const storyUrl = String(body.story_url ?? "");
+      if (!storyUrl.startsWith(STORAGE_PREFIX)) return json({ error: "story_url (the 9:16 teaser) must be uploaded to our storage" }, 400);
       const rows = await sql`
-        insert into iwt.posts (kind, lane, news_date, title, caption, media, evidence_note, created_by, status, approved_at)
+        insert into iwt.posts (kind, lane, news_date, title, caption, media, story_url, evidence_note, created_by, status, approved_at)
         values ('carousel', 'news', ${date}::date, ${String(body.title)}, ${String(body.caption)}, ${sql.json(media)},
-                ${body.evidence_note ?? null}, 'news-job', 'approved', now())
+                ${storyUrl}, ${body.evidence_note ?? null}, 'news-job', 'approved', now())
         on conflict (news_date) where lane = 'news' do nothing
         returning id, status`;
       if (!rows.length) return json({ error: `A news brief for ${date} already exists` }, 409);
