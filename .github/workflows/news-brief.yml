@@ -1,13 +1,11 @@
 # Daily news brief carousel. Builds the slides and queues them for the 08:00 New York news slot.
-# GitHub can skip scheduled runs under load (22 Nov 2026: the only 10:30 UTC run never started),
-# so the job is scheduled four times. The script exits when today's brief already exists.
-# 10:30-13:30 UTC is 05:30-08:30 New York in winter, 06:30-09:30 in summer; the brief can be
-# posted until 11:00 New York.
+# Started by the Supabase timer (iwt-social function, newsDispatchPass) between 05:30 and 09:30
+# New York, not by a GitHub schedule: GitHub started scheduled runs hours late or not at all
+# (22 Nov 2026: none; 23 Nov 2026: one run at 22:11 UTC, after the 11:00 New York cut-off).
+# The script exits when today's brief already exists.
 name: News brief
 
 on:
-  schedule:
-    - cron: "30 10,11,12,13 * * *"
   workflow_dispatch:
 
 jobs:

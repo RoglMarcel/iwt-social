@@ -410,6 +410,42 @@ async function newsPass() {
   return ` · News: ${added} new headlines` + (errors.length ? ` (feed error: ${errors.join("; ")})` : "");
 }
 
+// ---- News: start the GitHub job that makes the day's brief ----
+// GitHub's own schedule started runs hours late or not at all, so this timer starts the job.
+// Between 05:30 and 09:30 New York, while today's brief does not exist, it asks GitHub to run the
+// job, at most every 45 minutes. The job itself does nothing if the brief already exists.
+const NEWS_JOB = "https://api.github.com/repos/RoglMarcel/iwt-social/actions/workflows/news-brief.yml/dispatches";
+
+async function newsDispatchPass() {
+  const [t] = await sql`select (now() at time zone 'America/New_York')::date::text as d,
+                               to_char(now() at time zone 'America/New_York', 'HH24:MI') as hm`;
+  if (t.hm < "05:30" || t.hm > "09:30") return "";
+  const [made] = await sql`select 1 from iwt.posts where lane = 'news' and news_date = ${t.d}::date`;
+  if (made) return "";
+  const [s] = await sql`select news_dispatched_at from iwt.settings where id = 1`;
+  if (s.news_dispatched_at && Date.now() - new Date(s.news_dispatched_at).getTime() < 45 * 6e4) return "";
+  const [k] = await sql`select github_token from iwt.secrets where id = 1`;
+  await sql`update iwt.settings set news_dispatched_at = now() where id = 1`;
+  if (!k?.github_token) {
+    await sql`update iwt.settings set news_error = 'No GitHub token saved, so the news job cannot be started.',
+              news_error_date = ${t.d}::date where id = 1`;
+    return " · News job: no GitHub token";
+  }
+  const res = await fetch(NEWS_JOB, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${k.github_token}`, Accept: "application/vnd.github+json",
+               "User-Agent": "iwt-social", "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: "main" }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const msg = `GitHub refused to start the news job: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+    await sql`update iwt.settings set news_error = ${msg}, news_error_date = ${t.d}::date where id = 1`;
+    return ` · News job: start failed (HTTP ${res.status})`;
+  }
+  return " · News job: started";
+}
+
 async function fail(id: string, message: string) {
   await sql`update iwt.posts set status = 'failed', error = ${message}, publish_now = false where id = ${id}`;
 }
@@ -556,6 +592,7 @@ async function tick() {
     note += await tiktokPass(key, began + 70000).catch((e) => ` · TikTok error: ${(e as Error).message}`);
     note += await statsPass(key, began + 85000).catch((e) => ` · Stats error: ${(e as Error).message}`);
     note += await newsPass().catch((e) => ` · News error: ${(e as Error).message}`);
+    note += await newsDispatchPass().catch((e) => ` · News job error: ${(e as Error).message}`);
     note += await cleanupPass().catch((e) => ` · Clean-up error: ${(e as Error).message}`);
     return { ok: true, note, counts };
   } catch (e) {
