@@ -8,6 +8,9 @@ import { pathToFileURL } from "node:url";
 
 const FN_URL = "https://hrekooheseafvocxaquy.supabase.co/functions/v1/iwt-social";
 const STORIES = 5;
+// Hard limits: the longest text the slide renderer still fits (tested with 18 and 79 characters).
+// Gemini is asked for less (14 and 60), so it has headroom; it often overshoots by a few characters.
+const MAX_BIG = 18, MAX_HEADLINE = 80;
 
 // ---- Function calls --------------------------------------------------------
 async function fn(body) {
@@ -109,8 +112,8 @@ export function check(brief, headlines) {
       return `${h.title} ${h.summary}`;
     }).join(" ");
     for (const f of ["big", "headline", "body"]) if (typeof s[f] !== "string" || !s[f].trim()) throw new Error(`${where}: ${f} is empty`);
-    if (s.big.length > 14) throw new Error(`${where}: big label "${s.big}" is longer than 14 characters`);
-    if (s.headline.length > 60) throw new Error(`${where}: headline is longer than 60 characters`);
+    if (s.big.length > MAX_BIG) throw new Error(`${where}: big label "${s.big}" is longer than ${MAX_BIG} characters`);
+    if (s.headline.length > MAX_HEADLINE) throw new Error(`${where}: headline is longer than ${MAX_HEADLINE} characters`);
     if (s.body.replace(/\*\*/g, "").length > 300) throw new Error(`${where}: body is longer than 300 characters`);
     const have = new Set(numbers(src));
     for (const x of numbers(`${s.big} ${s.headline} ${s.body}`)) {
